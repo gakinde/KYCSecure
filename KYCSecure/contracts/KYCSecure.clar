@@ -228,6 +228,67 @@
   )
 )
 
+;; Advanced KYC Analytics and Batch Operations Function
+;; This function provides comprehensive analytics for KYC compliance monitoring
+;; and enables batch operations for efficient identity management
+(define-public (batch-kyc-analytics-and-operations 
+  (users (list 10 principal))
+  (operation-type (string-ascii 20))
+  (min-level uint)
+  (include-expired bool))
+  (let (
+    (caller tx-sender)
+    (current-block block-height)
+  )
+    ;; Ensure caller is authorized (either contract owner or authorized verifier)
+    (asserts! (or 
+      (is-eq caller CONTRACT-OWNER)
+      (is-authorized-verifier caller)
+    ) ERR-UNAUTHORIZED)
+    
+    (asserts! (is-contract-active) ERR-UNAUTHORIZED)
+    (asserts! (is-valid-kyc-level min-level) ERR-INVALID-LEVEL)
+    
+    ;; Process each user and collect analytics
+    (let (
+      (analytics-results (map process-user-analytics users))
+      (valid-users (filter is-user-valid-for-operation analytics-results))
+      (expired-users (filter is-user-expired analytics-results))
+      (base-compliance-summary {
+        total-processed: (len users),
+        valid-count: (len valid-users),
+        expired-count: (len expired-users),
+        compliance-rate: (if (> (len users) u0)
+          (/ (* (len valid-users) u100) (len users))
+          u0
+        ),
+        operation-type: operation-type,
+        processed-at: current-block,
+        min-level-required: min-level,
+        detailed-results: (list)  ;; Initialize as empty list with correct type
+      })
+    )
+      
+      ;; Execute batch operations based on operation type
+      (if (is-eq operation-type "RENEWAL_ALERT")
+        (begin
+          ;; Send renewal alerts for users with expiring KYC
+          (map send-renewal-notification expired-users)
+          (ok base-compliance-summary)
+        )
+        (if (is-eq operation-type "COMPLIANCE_CHECK")
+          ;; Return detailed compliance analysis
+          (ok (merge base-compliance-summary {
+            detailed-results: analytics-results
+          }))
+          ;; Default: return basic summary (keep detailed-results as empty list)
+          (ok base-compliance-summary)
+        )
+      )
+    )
+  )
+)
+
 ;; Helper function to process individual user analytics
 (define-private (process-user-analytics (user principal))
   (match (map-get? identities { user: user })
